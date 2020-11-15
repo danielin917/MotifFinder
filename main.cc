@@ -8,7 +8,7 @@
 #include <iostream>
 #include <vector>
 
-#include "em_tester.h"
+#include "motif_finder.h"
 #include "random_projection.h"
 
 using namespace motif;
