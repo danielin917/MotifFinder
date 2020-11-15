@@ -8,12 +8,13 @@
 #include <iostream>
 #include <vector>
 
-#include "meme.h"
+#include "em_tester.h"
+#include "random_projection.h"
 
-using namespace meme;
+using namespace motif;
 using namespace std;
 
-static constexpr int kDefaultNumIterations = 7;
+static constexpr int kDefaultNumIterations = 1000;
 
 bool ExtractSequencesFromFile(const string& filename,
                               vector<DNASequence> *dna_sequences);
@@ -28,9 +29,10 @@ int main(int argc, char *argv[]) {
   const int k_length = atoi(argv[1]);
 
   // First extract the sequences from the training set.
-  vector<DNASequence> train_sequences;
+  shared_ptr<vector<DNASequence>> train_sequences =
+    make_shared<vector<DNASequence>>();
   string train_filename(argv[2]);
-  if (!ExtractSequencesFromFile(train_filename, &train_sequences)) {
+  if (!ExtractSequencesFromFile(train_filename, train_sequences.get())) {
     cerr << "Error reading file " << train_filename << endl;
     return -1;
   }
@@ -48,10 +50,15 @@ int main(int argc, char *argv[]) {
     num_iterations = atoi(argv[5]);
   }
 
+  int num_mutations = 3;
+  RandomProjection rprojection(train_sequences, k_length,
+                               k_length - num_mutations);
+  rprojection.RunRandomProjectionScans(1 /* num_iterations */);
+
   cout << "Running " << num_iterations << " iterations on training set"
        << endl << endl;
 
-  Meme meme(move(train_sequences), k_length);
+  EMTester meme(train_sequences, k_length);
   meme.Run(num_iterations);
   meme.Test(test_sequences);
   return 0;

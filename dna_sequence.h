@@ -8,7 +8,7 @@
 
 #include <string>
 
-namespace meme {
+namespace motif {
 
 class DNASequence {
  public:
