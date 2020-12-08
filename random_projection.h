@@ -21,37 +21,31 @@ namespace motif {
 
 class RandomProjection {
  public:
+  typedef std::vector<std::vector<double>> CountMatrix;
+
   /* 'k' is the number of nucleotides that will be included in our proejction
    * scan. 'sequence_vec' contains the DNA sequences we will be scanning to
    * build our initial seed matrix.
    */
   RandomProjection(
-    const std::shared_ptr<std::vector<DNASequence>>& sequence_vec,
+    const std::shared_ptr<const std::vector<DNASequence>>& sequence_vec,
     int motif_length,
-    int k_num);
+    int num_mutations);
 
-  // Run random projection scans for 'num_iterations'.
-  void RunRandomProjectionScans(int num_iterations);
-
-  // Return a seed WMM based on the count matrix.
-  WeightMatrixModel GetSeedWMM();
-
- private:
   // Scan sequences using a random projection and update the 'count_matrix'
   // with heavy buckets.
   void Scan();
 
-  // Calculate the k-projection of the 'search_motif' string using the k
-  // indices provided in 'projection_indices'.
-  std::string GetProjection(const std::string& search_motif,
-                            const std::vector<int>& projection_indices);
+  // Return the weight matrix models associated with each bucket of l-mers.
+  std::vector<WeightMatrixModel> GetWMMVec();
 
-  // Update 'count_matrix' with found bucketed motifs.
-  void UpdateCountMatrix();
+ private:
+  // Create and add a count matrix per bucket.
+  void GenerateCountMatrices(int bucket_threshold);
 
  private:
   // Vector of DNA sequences we will be traversing.
-  std::shared_ptr<std::vector<DNASequence>> sequence_vec_;
+  std::shared_ptr<const std::vector<DNASequence>> sequence_vec_;
 
   // The 'k' number we will use to generate projections.
   int motif_length_;
@@ -67,9 +61,12 @@ class RandomProjection {
   // mutations.
   int k_num_;
 
+  // The number of expected mutations in the motif.
+  int num_mutations_;
+
   // Count matrix that holds our running counts for nucleotides at different
   // indexes find from random projection scan.
-  std::vector<std::vector<double>> count_matrix_;
+  std::vector<CountMatrix> count_matrices_;
 };
 
 } // namespace

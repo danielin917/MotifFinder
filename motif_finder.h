@@ -4,8 +4,8 @@
  * Author: Dan Lin danielin@uw.edu
  */
 
-#ifndef EM_TESTER_H_
-#define EM_TESTER_H_
+#ifndef MOTIF_FINDER_H_
+#define MOTIF_FINDER_H_
 
 #include <unordered_map>
 
@@ -24,16 +24,20 @@ class MotifFinder {
   // Construct MotifFinder class using provided 'sequence_vec' and the expected
   // 'k_length' of the motif we are looking for.
   MotifFinder(std::shared_ptr<std::vector<DNASequence>> sequence_vec,
-              int k_length);
+              int motif_length,
+              int num_mutations);
 
   // Test the current trained models against the sequences in
   // 'test_sequence_vec'.
-  void Test(const std::vector<DNASequence>& test_sequence_vec);
-
-  // Run the EM algorithm on 'sequence_vec' for 'num_iterations'.
-  WeightMatrixModel Run(int num_final_iterations);
+  void Run(const std::vector<DNASequence>& test_sequence_vec);
 
  private:
+  // Train the MEME model.
+  void TrainMemeModel();
+
+  // Train the random projection model.
+  void TrainRandomProjectionModel();
+
   // Create a seed matrix model based on 'seed_kmer'.
   WeightMatrixModel CreateSeedMatrixModel(const std::string& seed_kmer);
 
@@ -122,7 +126,10 @@ class MotifFinder {
   std::shared_ptr<const std::vector<DNASequence>> sequence_vec_;
 
   // The expected length of the motif we are searching for.
-  int k_length_;
+  int motif_length_;
+
+  // Number of potential mutations in the motif we are looking for.
+  int num_mutations_;
 
   // High initial entropy.
   WeightMatrixModel meme_model_;
@@ -133,4 +140,4 @@ class MotifFinder {
 
 } // namespace
 
-#endif // MEME_H_
+#endif // MOTIF_FINDER_H_

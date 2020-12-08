@@ -36,6 +36,10 @@ struct WeightMatrixModel {
   // Print the frequency matrix to stdout.
   void PrintFrequencyMatrix() const;
 
+  // Returns the string representing the most probablye nucleotide at each
+  // index.
+  std::string GetConsensusString() const;
+
   // Weight matrix model representing a 4 x K matrix of log2(f/b) where f
   // is the foreground frequency of a particular nucleotide at a particular
   // index and b is the expected background frequency.

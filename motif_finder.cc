@@ -13,7 +13,9 @@
 
 #include "motif_finder.h"
 #include "meme_graph.h"
+#include "random_projection.h"
 #include "util.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -28,9 +30,11 @@ static const vector<double> kDefaultBackgroundFrequencyVec =
 static const vector<double> kDefaultPseudoCountVec =
   { 0.25, 0.25, 0.25, 0.25 };
 static const int kDefaultSeedIterations = 1;
+static const int kDefaultEMIterations = 5;
 static const double kSeedPercent = 0.85;
 static const double kAverageColumnThreshold = 1;
-static const string kHistogramFileName = "MEME-histogram.dat";
+static const string kMemeHistogramFileName = "MEME-histogram.dat";
+static const string kProjectionHistogramFileName = "Rprojection-histogram.dat";
 static const string kRocFilename = "roc.dat";
 
 //-----------------------------------------------------------------------------
@@ -40,28 +44,64 @@ static const string kRocFilename = "roc.dat";
 //-----------------------------------------------------------------------------
 
 MotifFinder::MotifFinder(shared_ptr<vector<DNASequence>> sequence_vec,
-           const int k_length) :
+                         const int motif_length,
+                         const int num_mutations) :
   sequence_vec_(sequence_vec),
-  k_length_(k_length) {
+  motif_length_(motif_length),
+  num_mutations_(num_mutations) {
+  assert(sequence_vec_);
+  assert(sequence_vec_->size() > 0);
 }
 
 //-----------------------------------------------------------------------------
 
-void MotifFinder::Test(const vector<DNASequence>& test_sequence_vec) {
-  // Mapping from index to the number of times that index has the best score
+void MotifFinder::Run(const vector<DNASequence>& test_sequence_vec) {
+  Timer t;
+  t.Start();
+  TrainRandomProjectionModel();
+  if (random_projection_model_.frequency_matrix.size() > 0) {
+    cout << "Random Projection Frequency Matrix" << endl;
+    random_projection_model_.PrintFrequencyMatrix();
+    cout << endl;
+  } else {
+    cout << "No valid random projection model" << endl;
+  }
+  const int64_t rand_runtime_usecs = t.Stop(Timer::TimeUnit::kUsecs);
+  cout << "Random projection: " << rand_runtime_usecs << "usecs " << endl;
+
+  t.Start();
+  TrainMemeModel();
+  const int64_t meme_runtime_usecs = t.Stop(Timer::TimeUnit::kUsecs);
+  cout << "MEME: " << meme_runtime_usecs << "usecs " << endl;
+
+  cout << "MEME Frequency Matrix" << endl;
+
+  meme_model_.PrintFrequencyMatrix();
+  cout << endl;
+  // Mapping from index o the number of times that index has the best score
   // within a sequence.
-  vector<ROCPlotPoint> roc_plot_vec =
-    GetPlotData(test_sequence_vec, meme_model_, kHistogramFileName);
+  vector<ROCPlotPoint> meme_roc_plot_vec =
+    GetPlotData(test_sequence_vec, meme_model_, kMemeHistogramFileName);
+  vector<ROCPlotPoint> projection_roc_plot_vec =
+    GetPlotData(test_sequence_vec, random_projection_model_,
+                kProjectionHistogramFileName);
+  cout << "MEME Consensus: " << meme_model_.GetConsensusString() << endl;
+  cout << "Projection Consensus: "
+       << random_projection_model_.GetConsensusString() << endl;
 
+  cout << "MEME AUC: " << CalculateAUC(&meme_roc_plot_vec) << endl;
+  cout << "Random Projection AUC: "
+       << CalculateAUC(&meme_roc_plot_vec) << endl;
 
-  cout << "AUC: " << CalculateAUC(&roc_plot_vec) << endl;
   // Now right the ROC data out a .dat file. All roc_plot_vecs should be same
   // size. We will print data for each roc line into columns with 2 columns
   // per line.
   ofstream ofs(kRocFilename.c_str(), ofstream::out);
-  for (int ii = 0; ii < roc_plot_vec.size(); ++ii) {
-    ofs << roc_plot_vec[ii].fp_rate        /* Plot A */
-        << " " << roc_plot_vec[ii].tp_rate;
+  for (int ii = 0; ii < meme_roc_plot_vec.size(); ++ii) {
+    ofs << meme_roc_plot_vec[ii].fp_rate        /* MEME Plot */
+        << " " << meme_roc_plot_vec[ii].tp_rate
+        << " " << projection_roc_plot_vec[ii].fp_rate
+        << " " << projection_roc_plot_vec[ii].tp_rate;
     if (ii == 0) {
       // Add "Line of no discrimination" start.
       ofs << " " << 0 << " " << 0;
@@ -124,7 +164,7 @@ vector<ROCPlotPoint> MotifFinder::GetPlotData(
   const int m_index = peak_pair.first;
   cout << histogram_filename << endl;
   cout << "m: " << m_index << endl;
-  const double kmer_threshold = kAverageColumnThreshold * k_length_;
+  const double kmer_threshold = kAverageColumnThreshold * motif_length_;
 
   // Get all plot scores along with information on whether score is attached
   // to a real positive.
@@ -206,18 +246,35 @@ vector<ROCPlotPoint> MotifFinder::GetPlotData(
 
 //-----------------------------------------------------------------------------
 
-WeightMatrixModel MotifFinder::Run(const int num_final_iterations) {
+void MotifFinder::TrainRandomProjectionModel() {
+  RandomProjection rp(sequence_vec_, motif_length_,
+                      num_mutations_);
+  rp.Scan();
+  vector<WeightMatrixModel> wmm_vec = rp.GetWMMVec();
+  for (int ii = 0; ii < wmm_vec.size(); ++ii) {
+    wmm_vec[ii] = RunEM(move(wmm_vec[ii]), kDefaultEMIterations);
+  }
+
+  if (!wmm_vec.empty()) {
+    random_projection_model_ = *max_element(wmm_vec.begin(), wmm_vec.end());
+  }
+}
+
+//-----------------------------------------------------------------------------
+
+void MotifFinder::TrainMemeModel() {
+  assert(sequence_vec_);
   assert(sequence_vec_->size() > 0);
   vector<vector<double>> count_matrix;
   for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides); ++ii) {
-    count_matrix.push_back(vector<double>(k_length_, 0));
+    count_matrix.push_back(vector<double>(motif_length_, 0));
   }
 
-  // Add all possible initial subsequances.
+  // Add all possible initial subsequances from the first sequence.
   vector<string> kmer_seeds;
   const string& seed_sequence = (*sequence_vec_)[0].sequence();
-  for (int kk = 0; (kk + k_length_) <= seed_sequence.size(); ++kk) {
-    kmer_seeds.push_back(seed_sequence.substr(kk, k_length_));
+  for (int kk = 0; (kk + motif_length_) <= seed_sequence.size(); ++kk) {
+    kmer_seeds.push_back(seed_sequence.substr(kk, motif_length_));
   }
 
   // Create the initial seed WMMs.
@@ -233,13 +290,7 @@ WeightMatrixModel MotifFinder::Run(const int num_final_iterations) {
 
   // Now get the best initial seed model.
   meme_model_ = *max_element(wmm_seeds.begin(), wmm_seeds.end());
-  meme_model_ = RunEM(move(meme_model_));
-
-  cout << "Frequency Matrix" << endl;
-  meme_model_.PrintFrequencyMatrix();
-  cout << endl;
-
-  return meme_model_;
+  meme_model_ = RunEM(move(meme_model_), kDefaultEMIterations);
 }
 
 //-----------------------------------------------------------------------------
@@ -252,7 +303,7 @@ WeightMatrixModel MotifFinder::RunEM(WeightMatrixModel&& wmm,
     Mstep(yhat_matrix, kDefaultPseudoCountVec,
           kDefaultBackgroundFrequencyVec, &next_wmm);
 
-    const double entropy_deviation = 0.0001 * k_length_;
+    const double entropy_deviation = 0.0001 * motif_length_;
     if (next_wmm.entropy_history_vec.size() > 1 &&
         next_wmm.entropy_history_vec.back() <
           (next_wmm.entropy_history_vec[
@@ -267,14 +318,14 @@ WeightMatrixModel MotifFinder::RunEM(WeightMatrixModel&& wmm,
 //-----------------------------------------------------------------------------
 
 WeightMatrixModel MotifFinder::CreateSeedMatrixModel(const string& seed_kmer) {
-  assert(seed_kmer.size() == k_length_);
+  assert(seed_kmer.size() == motif_length_);
   vector<vector<double>> count_matrix;
   for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides); ++ii) {
-    count_matrix.push_back(vector<double>(k_length_, 0));
+    count_matrix.push_back(vector<double>(motif_length_, 0));
   }
   updateCountMatrix(seed_kmer, {} /* yhat_vec */, &count_matrix);
 
-  for (int kk = 0; kk < k_length_; ++kk) {
+  for (int kk = 0; kk < motif_length_; ++kk) {
     // Sanity check that our count matrix is made with just one kmer char count
     // in each column.
     double sum = 0;
@@ -322,7 +373,7 @@ vector<vector<double>> MotifFinder::makeCountMatrix(
 
   vector<vector<double>> count_matrix;
   for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides); ++ii) {
-    count_matrix.push_back(vector<double>(k_length_, 0));
+    count_matrix.push_back(vector<double>(motif_length_, 0));
   }
 
   for (int ii = 0; ii < sequence_vec_->size(); ++ii) {
@@ -341,15 +392,15 @@ void MotifFinder::updateCountMatrix(const string sequence_str,
   assert(count_matrix->size() ==
            static_cast<int>(Nucleotide::kNumNucleotides));
 
-  assert(k_length_ > 0);
+  assert(motif_length_ > 0);
   if (!yhat_vec.empty()) {
-    assert(yhat_vec.size() == sequence_str.size() - k_length_ + 1);
+    assert(yhat_vec.size() == sequence_str.size() - motif_length_ + 1);
   }
 
   // Iterate over starting indexes.
-  for (int ii = 0; ii < (sequence_str.size() - k_length_ + 1); ++ii) {
+  for (int ii = 0; ii < (sequence_str.size() - motif_length_ + 1); ++ii) {
     // Iterate over the corresponding k-mer columns given the starting index.
-    for (int kk = 0; kk < k_length_; ++kk) {
+    for (int kk = 0; kk < motif_length_; ++kk) {
       const Nucleotide n = CharToNucleotide(sequence_str[ii + kk]);
       assert(static_cast<int>(n) < count_matrix->size());
       // Add the count proportionally to how likely we are currently using the
@@ -389,8 +440,9 @@ void MotifFinder::updateMatrixModel(
 
 //-----------------------------------------------------------------------------
 
-vector<vector<double>> MotifFinder::scanWMM(const WeightMatrixModel& wmm,
-                                     const vector<DNASequence>& sequence_vec) {
+vector<vector<double>> MotifFinder::scanWMM(
+  const WeightMatrixModel& wmm,
+  const vector<DNASequence>& sequence_vec) {
   assert(wmm.matrix_model.size() > 0);
   vector<vector<double>> sequence_scores;
   const int klength = wmm.matrix_model[0].size();

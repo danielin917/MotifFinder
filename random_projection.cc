@@ -15,82 +15,104 @@ namespace motif {
 //-----------------------------------------------------------------------------
 
 RandomProjection::RandomProjection(
-  const std::shared_ptr<std::vector<DNASequence>>& sequence_vec,
+  const std::shared_ptr<const std::vector<DNASequence>>& sequence_vec,
   const int motif_length,
-  const int k_num) :
+  const int num_mutations) :
   sequence_vec_(sequence_vec),
   motif_length_(motif_length),
-  k_num_(k_num) {
+  num_mutations_(num_mutations) {
   assert(sequence_vec_);
-  assert(k_num < motif_length);
 
-  for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides); ++ii) {
-    count_matrix_.push_back(vector<double>(motif_length_, 1));
-  }
-}
-
-//-----------------------------------------------------------------------------
-
-void RandomProjection::RunRandomProjectionScans(const int num_iterations) {
-  for (int ii = 0; ii < num_iterations; ++ii) {
-    Scan();
-  }
+  k_num_ = min(15, motif_length_ - num_mutations_  - 1/* k_num */);
 }
 
 //-----------------------------------------------------------------------------
 
 void RandomProjection::Scan() {
-  vector<int> shuffled_indices;
-  for (int ii = 0; ii < motif_length_; ++ii) {
-    shuffled_indices.push_back(ii);
+  const double num_motifs = sequence_vec_->size();
+
+  // Set the bucket threshold to be twice the average bucket size.
+  /*
+  const int bucket_threshold =
+    3 * num_motifs *
+      ((*sequence_vec_)[0].sequence().size() - motif_length_ + 1) /
+        (pow(4.0, k_num_));
+  */
+  const int bucket_threshold = 2;
+  cout << "Bucket threshold" << bucket_threshold << endl;
+
+  static const double kBucketEnrichedProbability = 0.95;
+
+  // We calculate the number of trials so the probability that in at least one
+  // of the trials we will get an enriched bucket his is 0.95.
+  const long double probability_planted_motif_hits =
+    (1.0 * BinomialCoeff(motif_length_ - num_mutations_, k_num_)) /
+      (1.0 * BinomialCoeff(motif_length_, k_num_));
+
+  // Use Binomial distrbution to get probability that the threshold is not
+  // reached by aggregating the probability of all hits less than threshold.
+  long double probability_threshold_miss = 0;
+  for (int ii = 0; ii < bucket_threshold; ++ii) {
+    // P(X = k) = Bin(n, k) * p^k * (1-p)^(n-k);
+    probability_threshold_miss +=
+      1.0 * BinomialCoeff(num_motifs, ii) *
+        pow(probability_planted_motif_hits, ii) *
+        pow(1.0 - probability_planted_motif_hits, num_motifs - ii);
   }
 
-  Shuffle(shuffled_indices);
+  // 1 - ProbThreshodMiss^m >= q
+  // m = log(1 - q) / log(ProbThresholdMiss)
+  const long num_trials =  probability_threshold_miss == 0 ?
+                             1 :log(1 - kBucketEnrichedProbability) /
+                                  log(probability_threshold_miss);
 
-  vector<int> projection_indices;
-  for (int ii = 0; ii < k_num_; ++ii) {
-    projection_indices.push_back(shuffled_indices[ii]);
-  }
-  // Sort projection indices so we can store projection strings in=
-  // understandable order.
-  sort(projection_indices.begin(), projection_indices.end());
-  unordered_map<string, vector<pair<int, int>>> projection_bucket_map;
-
-  for (int ii = 0; ii < sequence_vec_->size(); ++ii) {
-    const string& sequence = (*sequence_vec_)[ii].sequence();
-    // Loop all starting indexes.
-    for (int kk = 0; kk < sequence.size() - motif_length_ + 1; ++kk) {
-      const string projection =
-        GetProjection(sequence.substr(kk, motif_length_), projection_indices);
-      projection_bucket_map_[projection].push_back(pair<int, int>(ii, kk));
+  cout << "Running " << num_trials << " trials for random projection" << endl;
+  for (int ii = 0; ii < num_trials; ++ii) {
+    projection_bucket_map_.clear();
+    vector<int> shuffled_indices;
+    for (int ii = 0; ii < motif_length_; ++ii) {
+      shuffled_indices.push_back(ii);
     }
-  }
 
-  static int kDefaultThreshold = 2;
-  for (auto iter = projection_bucket_map_.cbegin();
-        iter != projection_bucket_map_.cend(); ++iter) {
-    const vector<pair<int, int>>& location_vec = iter->second;
-    if (location_vec.size() < kDefaultThreshold) {
-      continue;
+    Shuffle(shuffled_indices);
+
+    vector<int> projection_indices;
+    for (int ii = 0; ii < k_num_; ++ii) {
+      projection_indices.push_back(shuffled_indices[ii]);
     }
-    cout << "Locations of projection: " << iter->first << endl;
-    for (int ii = 0; ii < location_vec.size(); ++ii) {
-      cout << location_vec[ii].second << endl;
+    // Sort projection indices so we can store projection strings in
+    // understandable order.
+    sort(projection_indices.begin(), projection_indices.end());
+    unordered_map<string, vector<pair<int, int>>> projection_bucket_map;
+
+    for (int ii = 0; ii < sequence_vec_->size(); ++ii) {
+      const string& sequence = (*sequence_vec_)[ii].sequence();
+      assert(sequence.size() >  motif_length_);
+      // Loop all starting indexes.
+      for (int kk = 0; kk < (int)sequence.size() - motif_length_ + 1; ++kk) {
+        const string projection =
+          GetProjection(sequence.substr(kk, motif_length_),
+                        projection_indices);
+        projection_bucket_map_[projection].push_back(pair<int, int>(ii, kk));
+      }
     }
+    GenerateCountMatrices(bucket_threshold);
   }
-  UpdateCountMatrix();
 }
 
 //-----------------------------------------------------------------------------
 
-void RandomProjection::UpdateCountMatrix() {
-
-  static int kDefaultThreshold = 2;
+void RandomProjection::GenerateCountMatrices(const int bucket_threshold) {
   for (auto iter = projection_bucket_map_.cbegin();
         iter != projection_bucket_map_.cend(); ++iter) {
     const vector<pair<int, int>>& location_vec = iter->second;
-    if (location_vec.size() < kDefaultThreshold) {
+    if (location_vec.size() < bucket_threshold) {
       continue;
+    }
+    CountMatrix count_matrix;
+    // We initialize with pseudocounts.
+    for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides); ++ii) {
+      count_matrix.push_back(vector<double>(motif_length_, 0.25));
     }
     for (int ii = 0; ii < location_vec.size(); ++ii) {
       const int sequence_no = location_vec[ii].first;
@@ -99,31 +121,27 @@ void RandomProjection::UpdateCountMatrix() {
         const int n_index = static_cast<int>(
           CharToNucleotide((*sequence_vec_)[sequence_no].
             sequence()[motif_index + kk]));
-        count_matrix_[n_index][kk] += 1;
+        assert(kk < count_matrix[n_index].size());
+        count_matrix[n_index][kk] += 1;
       }
     }
+    count_matrices_.push_back(count_matrix);
   }
 }
 
 //-----------------------------------------------------------------------------
 
-WeightMatrixModel RandomProjection::GetSeedWMM() {
+vector<WeightMatrixModel> RandomProjection::GetWMMVec() {
   static const vector<double> kDefaultBackgroundFrequencyVec =
     { 0.25, 0.25, 0.25, 0.25 };
-  vector<vector<double>> frequency_matrix = MakeFrequencyMatrix(count_matrix_);
-  return WeightMatrixModel(frequency_matrix, kDefaultBackgroundFrequencyVec);
-}
-
-//-----------------------------------------------------------------------------
-
-string RandomProjection::GetProjection(const string& search_motif,
-                                       const vector<int>& projection_indices) {
-  string projection;
-  for (int ii = 0; ii < projection_indices.size(); ++ii) {
-    assert(projection_indices[ii] < search_motif.size());
-    projection += toupper(search_motif[projection_indices[ii]]);
+  vector<WeightMatrixModel> wmm_vec;
+  for (int ii = 0; ii < count_matrices_.size(); ++ii) {
+    vector<vector<double>> frequency_matrix =
+      MakeFrequencyMatrix(count_matrices_[ii]);
+    wmm_vec.push_back(
+      WeightMatrixModel(frequency_matrix, kDefaultBackgroundFrequencyVec));
   }
-  return projection;
+  return wmm_vec;
 }
 
 //-----------------------------------------------------------------------------

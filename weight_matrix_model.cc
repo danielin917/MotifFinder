@@ -6,8 +6,8 @@
 #include <iostream>
 #include <string>
 
-#include "util.h"
 #include "weight_matrix_model.h"
+#include "util.h"
 
 using namespace std;
 
@@ -75,6 +75,24 @@ void WeightMatrixModel::PrintFrequencyMatrix() const {
     }
     cout << endl;
   }
+}
+
+//-----------------------------------------------------------------------------
+
+string WeightMatrixModel::GetConsensusString() const {
+  string consensus_string;
+  for (int kk = 0; kk < frequency_matrix[0].size(); ++kk) {
+    double max_frequency = -1;
+    Nucleotide n;
+    for (int ii = 0; ii < frequency_matrix.size(); ++ii) {
+      if (frequency_matrix[ii][kk] > max_frequency) {
+        n = static_cast<Nucleotide>(ii);
+        max_frequency = frequency_matrix[ii][kk];
+      }
+    }
+    consensus_string += NucleotideToChar(n);
+  }
+  return consensus_string;
 }
 
 //-----------------------------------------------------------------------------
