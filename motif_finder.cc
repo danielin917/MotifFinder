@@ -36,6 +36,7 @@ static const double kAverageColumnThreshold = 1;
 static const string kMemeHistogramFileName = "MEME-histogram.dat";
 static const string kProjectionHistogramFileName = "Rprojection-histogram.dat";
 static const string kRocFilename = "roc.dat";
+static const int kMaxProjectionModels = 1000000;
 
 //-----------------------------------------------------------------------------
 
@@ -251,8 +252,21 @@ void MotifFinder::TrainRandomProjectionModel() {
                       num_mutations_);
   rp.Scan();
   vector<WeightMatrixModel> wmm_vec = rp.GetWMMVec();
+  cout << wmm_vec.size() << "Projection models generated" << endl;
+
+  // Let's run EM on each just once to get a seed entropy.
+  for (int ii = 0; ii < wmm_vec.size(); ++ii) {
+    wmm_vec[ii] = RunEM(move(wmm_vec[ii]), kDefaultSeedIterations);
+  }
+
+  sort(wmm_vec.begin(), wmm_vec.end());
+  reverse(wmm_vec.begin(), wmm_vec.end());
   for (int ii = 0; ii < wmm_vec.size(); ++ii) {
     wmm_vec[ii] = RunEM(move(wmm_vec[ii]), kDefaultEMIterations);
+    if (ii >= kMaxProjectionModels) {
+      // Only run EM on the most probmising models.
+      break;
+    }
   }
 
   if (!wmm_vec.empty()) {

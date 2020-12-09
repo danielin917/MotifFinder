@@ -83,11 +83,13 @@ int main(int argc, char *argv[]) {
                     num_mutations,
                     sequence_length,
                     num_sequences);
+/*
   WriteTestDataFile(kTrainFileName,
                     motif_string,
                     num_mutations,
                     sequence_length,
                     num_sequences);
+*/
 }
 
 //-----------------------------------------------------------------------------

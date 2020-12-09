@@ -20,7 +20,7 @@ class CountMinSketch {
   void Increment(const std::string& input);
 
   // Returns the current estimated count for this key.
-  int GetCount(const std::string& key);
+  long GetCount(const std::string& key);
 
  private:
   // Down sample all counters and update sampling probabilities.

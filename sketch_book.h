@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "count_min_sketch.h"
+#include "dna_sequence.h"
 
 namespace motif {
 
@@ -34,6 +35,10 @@ class SketchBook {
       SketchState(std::vector<int>&& p_projection_indices_vec,
                   CountMinSketch&& p_count_min);
 
+      bool operator<(const SketchState& other) const {
+        return current_best_min_count < other.current_best_min_count;
+      }
+
       // Projection indices used to get the projection 'hash' that was used to
       // key the CountMinSketch.
       std::vector<int> projection_indices_vec;
@@ -42,10 +47,10 @@ class SketchBook {
       CountMinSketch count_min;
 
       // The full motif word associated with the most recent best key.
-      std::string best_motif_word;
+      std::deque<std::string> best_motif_word_deque;
 
       // The count associated with the current best string.
-      int current_best_min_count;
+      long current_best_min_count;
     };
 
     // Scan FASTA file and look for motifs of length 'k_num_'.
@@ -76,6 +81,9 @@ class SketchBook {
     // Vector containing sketches associated with all of our random
     // projections.
     std::vector<SketchState> sketch_state_vec_;
+
+    // Sequence vector that will be used to perform EM.
+    std::shared_ptr<std::vector<DNASequence>> sequence_vec_;
 };
 
 } // namespace

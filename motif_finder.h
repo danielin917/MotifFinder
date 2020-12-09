@@ -31,6 +31,11 @@ class MotifFinder {
   // 'test_sequence_vec'.
   void Run(const std::vector<DNASequence>& test_sequence_vec);
 
+  // Run expectation maximization using a staring 'wmm' as a starting model.
+  // Run for 'num_iterations' steps.
+  WeightMatrixModel RunEM(WeightMatrixModel&& wmm,
+                          const int num_iterations = kMaxNumIterations);
+
  private:
   // Train the MEME model.
   void TrainMemeModel();
@@ -43,11 +48,6 @@ class MotifFinder {
 
   // Create an initial seed for EM using the random projection paradigm.
   WeightMatrixModel CreateRandomProjectionSeed();
-
-  // Run expectation maximization using a staring 'wmm' as a starting model.
-  // Run for 'num_iterations' steps.
-  WeightMatrixModel RunEM(WeightMatrixModel&& wmm,
-                          const int num_iterations = kMaxNumIterations);
 
   // Builds and returns a 4 x k count matrix based on counting the occurrences
   // of each nucleotide at each position in the k-mer for the given sequences.

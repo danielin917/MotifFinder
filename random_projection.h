@@ -21,7 +21,15 @@ namespace motif {
 
 class RandomProjection {
  public:
-  typedef std::vector<std::vector<double>> CountMatrix;
+  struct CountMatrix {
+    int total_count;
+
+    std::vector<std::vector<double>> matrix;
+
+    bool operator<(const CountMatrix& other) const {
+      return total_count < other.total_count;
+    }
+  };
 
   /* 'k' is the number of nucleotides that will be included in our proejction
    * scan. 'sequence_vec' contains the DNA sequences we will be scanning to
@@ -37,7 +45,7 @@ class RandomProjection {
   void Scan();
 
   // Return the weight matrix models associated with each bucket of l-mers.
-  std::vector<WeightMatrixModel> GetWMMVec();
+  std::vector<WeightMatrixModel> GetWMMVec(int max = INT_MAX);
 
  private:
   // Create and add a count matrix per bucket.

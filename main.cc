@@ -21,6 +21,8 @@ bool ExtractSequencesFromFile(const string& filename,
                               vector<DNASequence> *dna_sequences);
 
 int main(int argc, char *argv[]) {
+  srand(time(NULL));
+
   if (argc < 4) {
     cout << "Not enough args provided." << endl
          << "Format: ./a.out <motif_length> <test_file> <algorithm>"

@@ -125,11 +125,29 @@ int BinomialCoeff(int n, int k) {
 string GetProjection(const string& search_motif,
                      const vector<int>& projection_indices) {
   string projection;
+  projection.reserve(projection_indices.size());
   for (int ii = 0; ii < projection_indices.size(); ++ii) {
+    #ifdef DEBUG
     assert(projection_indices[ii] < search_motif.size());
-    projection += toupper(search_motif[projection_indices[ii]]);
+    #endif
+    projection += search_motif[projection_indices[ii]];
   }
   return projection;
+}
+
+//-----------------------------------------------------------------------------
+
+int HammingDistance(const std::string& s1, const std::string& s2) {
+  #ifdef DEBUG
+  assert(s1.size() == s2.size());
+  #endif
+  int distance = 0;
+  for (int ii = 0; ii < s1.size(); ++ii) {
+    if (s1[ii] != s2[ii]) {
+      ++distance;
+    }
+  }
+  return distance;
 }
 
 //-----------------------------------------------------------------------------

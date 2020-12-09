@@ -34,12 +34,11 @@ char NucleotideToChar(Nucleotide n);
 
 // Knuth-Shuffle
 template<typename T>
-T Shuffle(T permutation) {
+void Shuffle(T& permutation) {
   for (int ii = 0; ii < permutation.size(); ++ii) {
     int rand_offset = rand() % (permutation.size() - ii);
     std::swap(permutation[ii], permutation[ii + rand_offset]);
   }
-  return permutation;
 }
 
 //-----------------------------------------------------------------------------
@@ -73,6 +72,10 @@ int BinomialCoeff(int n, int k);
 // Returns the projection of 'search_motif' based on the 'projection_indices'.
 std::string GetProjection(const std::string& search_motif,
                           const std::vector<int>& projection_indices);
+
+//-----------------------------------------------------------------------------
+
+int HammingDistance(const std::string& s1, const std::string& s2);
 
 //-----------------------------------------------------------------------------
 

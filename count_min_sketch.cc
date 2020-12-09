@@ -82,8 +82,8 @@ void CountMinSketch::Increment(const string& key) {
 }
 //-----------------------------------------------------------------------------
 
-int CountMinSketch::GetCount(const string& key) {
-  return (int)GetRawCount(key) << num_down_samples_;
+long CountMinSketch::GetCount(const string& key) {
+  return (long)GetRawCount(key) << num_down_samples_;
 }
 
 //-----------------------------------------------------------------------------
