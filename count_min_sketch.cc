@@ -18,6 +18,9 @@ using namespace std;
 
 static int kSeed = std::chrono::system_clock::now().time_since_epoch().count();
 static default_random_engine kRandomGenerator;
+static long kRandSeed =
+  chrono::duration_cast<std::chrono::nanoseconds>(
+    chrono::system_clock::now().time_since_epoch()).count();
 
 //-----------------------------------------------------------------------------
 
@@ -35,9 +38,6 @@ CountMinSketch::CountMinSketch(int num_rows, int row_size,
 
   typedef chrono::time_point<chrono::system_clock> time_point;
   for (int ii = 0; ii < num_rows; ++ii) {
-    const time_point tp = chrono::system_clock::now();
-    row_seeds_.push_back(chrono::duration_cast<std::chrono::nanoseconds>(
-                         tp.time_since_epoch()).count());
     sketch_.push_back(vector<short>(row_size, 0));
   }
 }
@@ -49,9 +49,6 @@ void CountMinSketch::Increment(const string& key) {
     --num_skips_remaining_;
     return;
   }
-#ifdef DEBUG
-  assert(row_seeds_.size() == sketch_.size());
-#endif
 
   #ifdef CONSERVATIVE_UPDATE
   // We need the RawCount for conservative update
@@ -62,8 +59,9 @@ void CountMinSketch::Increment(const string& key) {
   }
   #endif
 
-  for (int ii = 0; ii < row_seeds_.size(); ++ii) {
-    XXH64_hash_t hash = XXH64((void*)key.c_str(), key.size(), row_seeds_[ii]);
+  for (int ii = 0; ii < sketch_.size(); ++ii) {
+    XXH64_hash_t hash =
+      XXH64((void*)key.c_str(), key.size(), kRandSeed ^ (long)(this) ^ ii);
     short *const inc = &sketch_[ii][hash % sketch_[ii].size()];
     #ifdef CONSERVATIVE_UPDATE
       if (*inc == current_val) {
@@ -89,12 +87,9 @@ long CountMinSketch::GetCount(const string& key) {
 //-----------------------------------------------------------------------------
 
 short CountMinSketch::GetRawCount(const std::string& key) {
-#ifdef DEBUG
-  assert(row_seeds_.size() == sketch_.size());
-#endif
   short min_count = kShortMax;
-  for (int ii = 0; ii < row_seeds_.size(); ++ii) {
-    XXH64_hash_t hash = XXH64((void*)key.c_str(), key.size(), row_seeds_[ii]);
+  for (int ii = 0; ii < sketch_.size(); ++ii) {
+    XXH64_hash_t hash = XXH64((void*)key.c_str(), key.size(), kRandSeed + ii);
     min_count = min(min_count, sketch_[ii][hash % sketch_[ii].size()]);
   }
   return min_count;

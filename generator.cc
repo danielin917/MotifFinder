@@ -55,6 +55,7 @@ void PrintSequenceWithMutations(ofstream& ofs,
 //-----------------------------------------------------------------------------
 
 int main(int argc, char *argv[]) {
+  srand(time(NULL));
   if (argc != 5) {
     cout << "Incorret usage, expected: "
          << "./a.out <motif_length> <sequence_length> <num_mutations> "
@@ -77,7 +78,6 @@ int main(int argc, char *argv[]) {
   int motif_offset = sequence_length / 2;
   assert((sequence_length / 2) > motif_string.size());
 
-  srand(time(NULL));
   WriteTestDataFile(kTestFileName,
                     motif_string,
                     num_mutations,

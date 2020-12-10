@@ -22,9 +22,9 @@ namespace motif {
 
 // We will buffer in 1 MB chunks.
 static constexpr size_t kBufferSize = 1024 * 1024;
-static constexpr size_t kSketchVecSize = 10000;
+static constexpr size_t kSketchVecSize = 700;
 static constexpr int kSketchNumRows = 4;
-static constexpr int kSketchRowSize = 1000;
+static constexpr int kSketchRowSize = 14000;
 static constexpr int kSampleSequenceVecSize = 200;
 
 //-----------------------------------------------------------------------------
@@ -192,12 +192,12 @@ string SketchBook::Scan() {
   }
 
   // Cluster to bring the number of EM models down by 80%
-  static double kPercentThreshold = 0.5;
+  //  0.7 light, 0.4 heavy
+  static double kPercentThreshold = 0.7;
   cout << sketch_state_vec_.size() * kPercentThreshold << "++" << endl;
   const int num_clusters = motif_vec.size() * kPercentThreshold;
   const int avg_cluster_size = motif_vec.size() / num_clusters;
-  assert(k.Cluster(motif_vec.size() * kPercentThreshold));
-
+  k.Cluster(kPercentThreshold * motif_vec.size());
 
 /*
   vector<int> best_nodes =
@@ -311,7 +311,7 @@ void SketchBook::ProcessSequence(const string& sequence) {
         sketch_state_vec_[ii].current_best_min_count = min_count;
       }
 
-      static const int kMaxSize = 3;
+      static const int kMaxSize = 2;
       if (best_motif_word_deque->size() > kMaxSize) {
         best_motif_word_deque->pop_back();
       }

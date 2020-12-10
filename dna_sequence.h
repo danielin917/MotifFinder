@@ -19,6 +19,7 @@ class DNASequence {
   DNASequence(const std::string& sequence, const std::string& identifier);
 
   const std::string& sequence() const { return sequence_; }
+  const std::string& identifier() const { return identifier_; }
 
   // Prints the DNA sequence out in columns.
   void PrintWithColumns() const;

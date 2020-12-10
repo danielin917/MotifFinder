@@ -22,6 +22,12 @@ class CountMinSketch {
   // Returns the current estimated count for this key.
   long GetCount(const std::string& key);
 
+  long GetSizeBytes() {
+    long size = sizeof(CountMinSketch);
+    size += sketch_.size() * sketch_[0].size() * sizeof(short);
+    return size;
+  }
+
  private:
   // Down sample all counters and update sampling probabilities.
   void DownSample();
@@ -34,9 +40,6 @@ class CountMinSketch {
   // Sketch matrix. Each row will contain counts that are accessed by pairwise
   // independent hash functions for incrementing.
   std::vector<std::vector<short>> sketch_;
-
-  // Seeds that will be used for the hash funtion of each row.
-  std::vector<int64_t> row_seeds_;
 
   // The geometric_distribution object associated with this sketch.
   std::geometric_distribution<int> geo_dist_;

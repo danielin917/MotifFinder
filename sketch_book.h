@@ -38,6 +38,15 @@ class SketchBook {
       bool operator<(const SketchState& other) const {
         return current_best_min_count < other.current_best_min_count;
       }
+      long GetSizeBytes() {
+        long size = sizeof(SketchState);
+        size += projection_indices_vec.size() * sizeof(int);
+        size += count_min.GetSizeBytes();
+        for (int ii = 0; ii < best_motif_word_deque.size(); ++ii) {
+          size += best_motif_word_deque[ii].size();
+        }
+        return size;
+      }
 
       // Projection indices used to get the projection 'hash' that was used to
       // key the CountMinSketch.
@@ -67,6 +76,21 @@ class SketchBook {
 
   std::vector<WeightMatrixModel> BuildWMMVec(
     const std::vector<CountMatrix>& count_matrices);
+
+  long GetSizeBytes() {
+    long size = sizeof(SketchBook);
+    size += filename_.size();
+    for (int ii = 0; ii < sketch_state_vec_.size(); ++ii) {
+      size += sketch_state_vec_[ii].GetSizeBytes();
+    }
+
+    for (int ii = 0; ii < sequence_vec_->size(); ++ii) {
+      size += sizeof(DNASequence);
+      size += (*sequence_vec_)[ii].sequence().size();
+      size += (*sequence_vec_)[ii].identifier().size();
+    }
+    return size;
+  }
 
   private:
     // Filename for FASTA file.

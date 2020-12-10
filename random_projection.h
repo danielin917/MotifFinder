@@ -47,6 +47,27 @@ class RandomProjection {
   // Return the weight matrix models associated with each bucket of l-mers.
   std::vector<WeightMatrixModel> GetWMMVec(int max = INT_MAX);
 
+  long SizeBytes() {
+    long size = sizeof(RandomProjection);
+    for (int ii = 0; ii < sequence_vec_->size(); ++ii) {
+      size += sizeof(DNASequence);
+      size += (*sequence_vec_)[ii].sequence().size();
+      size += (*sequence_vec_)[ii].identifier().size();
+    }
+
+    for (auto iter = projection_bucket_map_.begin();
+          iter != projection_bucket_map_.end(); ++iter) {
+      size += iter->first.size();
+      size += iter->second.size()*sizeof(std::pair<int, int>);
+    }
+
+    if (count_matrices_.size() > 0) {
+      size += count_matrices_.size() * count_matrices_[0].matrix.size()*
+              count_matrices_[0].matrix[0].size();
+    }
+    return size;
+  }
+
  private:
   // Create and add a count matrix per bucket.
   void GenerateCountMatrices(int bucket_threshold);

@@ -38,7 +38,9 @@ int main(int argc, char *argv[]) {
   const string algorithm(argv[3]);
   if (algorithm == "sketch_book") {
     SketchBook sk(test_filename, motif_length, num_mutations);
+    cout << "Early SketchBook size:" << sk.GetSizeBytes() << endl;
     string consensus = sk.Scan();
+    cout << "Final SketchBook size:" << sk.GetSizeBytes() << endl;
     cout << "Consensus: "<< consensus << endl;
     return 0;
   }

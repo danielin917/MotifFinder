@@ -57,7 +57,7 @@ MotifFinder::MotifFinder(shared_ptr<vector<DNASequence>> sequence_vec,
 //-----------------------------------------------------------------------------
 
 void MotifFinder::Run(const vector<DNASequence>& test_sequence_vec) {
-  Timer t;
+  /*
   t.Start();
   TrainRandomProjectionModel();
   if (random_projection_model_.frequency_matrix.size() > 0) {
@@ -70,6 +70,8 @@ void MotifFinder::Run(const vector<DNASequence>& test_sequence_vec) {
   const int64_t rand_runtime_usecs = t.Stop(Timer::TimeUnit::kUsecs);
   cout << "Random projection: " << rand_runtime_usecs << "usecs " << endl;
 
+*/
+  Timer t;
   t.Start();
   TrainMemeModel();
   const int64_t meme_runtime_usecs = t.Stop(Timer::TimeUnit::kUsecs);
@@ -83,12 +85,14 @@ void MotifFinder::Run(const vector<DNASequence>& test_sequence_vec) {
   // within a sequence.
   vector<ROCPlotPoint> meme_roc_plot_vec =
     GetPlotData(test_sequence_vec, meme_model_, kMemeHistogramFileName);
+  /*
   vector<ROCPlotPoint> projection_roc_plot_vec =
     GetPlotData(test_sequence_vec, random_projection_model_,
                 kProjectionHistogramFileName);
+  */
   cout << "MEME Consensus: " << meme_model_.GetConsensusString() << endl;
-  cout << "Projection Consensus: "
-       << random_projection_model_.GetConsensusString() << endl;
+  //cout << "Projection Consensus: "
+   //    << random_projection_model_.GetConsensusString() << endl;
 
   cout << "MEME AUC: " << CalculateAUC(&meme_roc_plot_vec) << endl;
   cout << "Random Projection AUC: "
@@ -100,9 +104,9 @@ void MotifFinder::Run(const vector<DNASequence>& test_sequence_vec) {
   ofstream ofs(kRocFilename.c_str(), ofstream::out);
   for (int ii = 0; ii < meme_roc_plot_vec.size(); ++ii) {
     ofs << meme_roc_plot_vec[ii].fp_rate        /* MEME Plot */
-        << " " << meme_roc_plot_vec[ii].tp_rate
-        << " " << projection_roc_plot_vec[ii].fp_rate
-        << " " << projection_roc_plot_vec[ii].tp_rate;
+        << " " << meme_roc_plot_vec[ii].tp_rate;
+        //<< " " << projection_roc_plot_vec[ii].fp_rate
+        //<< " " << projection_roc_plot_vec[ii].tp_rate;
     if (ii == 0) {
       // Add "Line of no discrimination" start.
       ofs << " " << 0 << " " << 0;
@@ -251,6 +255,7 @@ void MotifFinder::TrainRandomProjectionModel() {
   RandomProjection rp(sequence_vec_, motif_length_,
                       num_mutations_);
   rp.Scan();
+  cout << "Random projection used " << rp.SizeBytes() << " bytes" << endl;
   vector<WeightMatrixModel> wmm_vec = rp.GetWMMVec();
   cout << wmm_vec.size() << "Projection models generated" << endl;
 
