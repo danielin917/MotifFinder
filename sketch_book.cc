@@ -22,9 +22,9 @@ namespace motif {
 
 // We will buffer in 1 MB chunks.
 static constexpr size_t kBufferSize = 1024 * 1024;
-static constexpr size_t kSketchVecSize = 5000;
-static constexpr int kSketchNumRows = 5;
-static constexpr int kSketchRowSize = 10000;
+static constexpr size_t kSketchVecSize = 10000;
+static constexpr int kSketchNumRows = 4;
+static constexpr int kSketchRowSize = 1000;
 static constexpr int kSampleSequenceVecSize = 200;
 
 //-----------------------------------------------------------------------------
@@ -50,7 +50,7 @@ SketchBook::SketchBook(const string& filename,
   struct stat stat_buf;
   int rc = stat(filename.c_str(), &stat_buf);
   assert(rc != -1);
-  int file_size = rc == 0 ? stat_buf.st_size : -1;
+  long file_size = rc == 0 ? stat_buf.st_size : -1;
   cout << "file size: " << file_size << endl;
   const int desired_k = log(file_size) / log(4) + 1.0;
   cout << "Desired k: " << desired_k << endl;
@@ -125,19 +125,60 @@ string SketchBook::Scan() {
     }
   }
 
-  static double kPercentThreshold = 0.5;
-  cout << sketch_state_vec_.size() * kPercentThreshold << "++" << endl;
 
+  // Here we are going to run 1 EM step to filter good seeds.
+  vector<CountMatrix> count_matrices;
+  for (int ii = 0; ii < sketch_state_vec_.size(); ++ii) {
+    CountMatrix count_matrix;
+    for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides);
+           ++ii) {
+      // Add pseudo counts.
+      count_matrix.push_back(vector<double>(motif_length_, 1));
+    }
 
+    for (int kk = 0; kk < sketch_state_vec_[ii].best_motif_word_deque.size();
+          ++kk) {
+      const string motif_string =
+        sketch_state_vec_[ii].best_motif_word_deque[kk];
+
+      for (int ii = 0; ii < motif_string.size(); ++ii) {
+        const int n_index = static_cast<int>(
+          CharToNucleotide(motif_string[ii]));
+        count_matrix[n_index][ii] += 1;
+      }
+    }
+    count_matrices.push_back(count_matrix);
+  }
+
+  MotifFinder mf(sequence_vec_, motif_length_, num_mutations_);
+  vector<WeightMatrixModel> wmm_vec = BuildWMMVec(count_matrices);
+  cout << "Performing seed EM on " << wmm_vec.size() << " models" << endl;
+  for (int ii = 0; ii < wmm_vec.size(); ++ii) {
+    wmm_vec[ii] = mf.RunEM(move(wmm_vec[ii]), 1);
+  }
+  sort(wmm_vec.begin(), wmm_vec.end());
+  reverse(wmm_vec.begin(), wmm_vec.end());
+
+  // Get the half of seeds with the best entropy.
+/*
   vector<string> motif_vec;
   for (int ii = 0; ii < sketch_state_vec_.size(); ++ii) {
     for (int kk = 0; kk < sketch_state_vec_[ii].best_motif_word_deque.size();
           ++kk) {
-      motif_vec.push_back(sketch_state_vec_[ii].best_motif_word_deque[kk]);
+      const string motif_string =
+        sketch_state_vec_[ii].best_motif_word_deque[kk];
+      motif_vec.push_back(motif_string);
     }
   }
+*/
+  vector<string> motif_vec;
+  for (int ii = 0; ii < wmm_vec.size() / 2; ++ii) {
+    motif_vec.push_back(wmm_vec[ii].GetConsensusString());
+  }
 
-  // Perform clustering based on Hamming weight.
+  // Now we will perform clustering based on Hamming weight as the next level
+  // of filtering.
+  cout << "Clustering " << motif_vec.size() << " filtered motifs" << endl;
   Kruskals k(motif_vec.size());
   // First add all edges.
   for (int ii = 0; ii < motif_vec.size(); ++ii) {
@@ -150,7 +191,11 @@ string SketchBook::Scan() {
     }
   }
 
-  // Cluster to bring the size of EM models down by half.
+  // Cluster to bring the number of EM models down by 80%
+  static double kPercentThreshold = 0.5;
+  cout << sketch_state_vec_.size() * kPercentThreshold << "++" << endl;
+  const int num_clusters = motif_vec.size() * kPercentThreshold;
+  const int avg_cluster_size = motif_vec.size() / num_clusters;
   assert(k.Cluster(motif_vec.size() * kPercentThreshold));
 
 
@@ -165,22 +210,23 @@ string SketchBook::Scan() {
     motif_forest[leader].push_back(ii);
   }
 
-  static const int kMinClusterSize = 3;
+  static const int kMinClusterSize = 1;
 
   // We will now create a count matrix for each of our clusters.
-  vector<CountMatrix> count_matrices;
+  //vector<CountMatrix> count_matrices;
+  count_matrices.clear();
   for (auto iter = motif_forest.begin(); iter != motif_forest.end(); ++iter) {
-    CountMatrix count_matrix;
-    for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides); ++ii) {
-      // Add pseudo counts.
-      count_matrix.push_back(vector<double>(motif_length_, 0.05));
-    }
     const vector<int>& motif_index_vec = iter->second;
     if (motif_index_vec.size() < kMinClusterSize) {
-      // Outliers will be ignored.
       continue;
     }
 
+    CountMatrix count_matrix;
+    for (int ii = 0; ii < static_cast<int>(Nucleotide::kNumNucleotides);
+           ++ii) {
+      // Add pseudo counts.
+      count_matrix.push_back(vector<double>(motif_length_, 0.25));
+    }
     for (int ii = 0; ii < motif_index_vec.size(); ++ii) {
       const string& best_motif_word = motif_vec[motif_index_vec[ii]];
       cout << "Best motif " << ii <<  "  best_motif_word " <<  best_motif_word
@@ -197,6 +243,36 @@ string SketchBook::Scan() {
 
   cout << count_matrices.size() << " models being analyzed" << endl;
 
+
+  //MotifFinder mf(sequence_vec_, motif_length_, num_mutations_);
+  /*vector<WeightMatrixModel> */wmm_vec = BuildWMMVec(count_matrices);
+  for (int ii = 0; ii < wmm_vec.size(); ++ii) {
+    wmm_vec[ii] = mf.RunEM(move(wmm_vec[ii]), 10 /* max_iterations */);
+  }
+
+  cout << "B: " << endl;
+  WeightMatrixModel best_wmm;
+  assert(!wmm_vec.empty());
+  sort(wmm_vec.begin(), wmm_vec.end());
+  for (int ii = 0; ii < min(5, (int)wmm_vec.size()); ++ii) {
+    cout << wmm_vec[wmm_vec.size() - 1 - ii].GetConsensusString() << ": "
+         << wmm_vec[wmm_vec.size() - 1 - ii].entropy_history_vec.back()
+         << endl;
+  }
+  best_wmm = wmm_vec.back();
+  best_wmm.PrintFrequencyMatrix();
+  cout << "Relative entropy: " << best_wmm.entropy_history_vec.back() << endl;
+  cout << (1.0 * best_wmm.entropy_history_vec.back()) / motif_length_
+       << " bits per letter" << endl;
+
+  return best_wmm.GetConsensusString();
+}
+
+//-----------------------------------------------------------------------------
+
+vector<WeightMatrixModel> SketchBook::BuildWMMVec(
+  const vector<CountMatrix>& count_matrices) {
+
   // Build weight matrices.
   static const vector<double> kDefaultBackgroundFrequencyVec =
     { 0.25, 0.25, 0.25, 0.25 };
@@ -207,20 +283,7 @@ string SketchBook::Scan() {
     wmm_vec.push_back(
       WeightMatrixModel(frequency_matrix, kDefaultBackgroundFrequencyVec));
   }
-
-  cout << "A: " << endl;
-  MotifFinder mf(sequence_vec_, motif_length_, num_mutations_);
-  for (int ii = 0; ii < wmm_vec.size(); ++ii) {
-    wmm_vec[ii] = mf.RunEM(move(wmm_vec[ii]), 5 /* num_iterations */);
-  }
-
-  cout << "B: " << endl;
-  WeightMatrixModel best_wmm;
-  assert(!wmm_vec.empty());
-  best_wmm = *max_element(wmm_vec.begin(), wmm_vec.end());
-  best_wmm.PrintFrequencyMatrix();
-
-  return best_wmm.GetConsensusString();
+  return wmm_vec;
 }
 
 //-----------------------------------------------------------------------------
@@ -237,9 +300,10 @@ void SketchBook::ProcessSequence(const string& sequence) {
 
       deque<string> *const best_motif_word_deque =
         &sketch_state_vec_[ii].best_motif_word_deque;
-      if (best_motif_word_deque->empty() ||
-          (min_count >= sketch_state_vec_[ii].current_best_min_count &&
-           best_motif_word_deque->front() != motif_word)) {
+      if (min_count >= sketch_state_vec_[ii].current_best_min_count &&
+           find(best_motif_word_deque->begin(),
+                best_motif_word_deque->end(), motif_word) ==
+             best_motif_word_deque->end()) {
         best_motif_word_deque->push_front(motif_word);
       }
 
@@ -247,7 +311,7 @@ void SketchBook::ProcessSequence(const string& sequence) {
         sketch_state_vec_[ii].current_best_min_count = min_count;
       }
 
-      static const int kMaxSize = 2;
+      static const int kMaxSize = 3;
       if (best_motif_word_deque->size() > kMaxSize) {
         best_motif_word_deque->pop_back();
       }

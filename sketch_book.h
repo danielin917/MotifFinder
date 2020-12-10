@@ -65,6 +65,9 @@ class SketchBook {
   // reading line.
   int GetLine(const char *buffer, int index, std::string *line);
 
+  std::vector<WeightMatrixModel> BuildWMMVec(
+    const std::vector<CountMatrix>& count_matrices);
+
   private:
     // Filename for FASTA file.
     std::string filename_;
